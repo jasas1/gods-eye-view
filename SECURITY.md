@@ -52,6 +52,7 @@ The data proxies in `vite.config.js` are written so the browser cannot turn the 
 - **Sanitized errors** — internal error details are not echoed back to clients.
 - **Coalesced OAuth refresh** and cached successful responses only (OpenSky).
 - **Redacted debug logging.** The voice debug log (`.gev-logs/`, gitignored) strips API keys, bearer tokens, client secrets, and image data URLs before writing.
+- **External plugin dirs are scoped to the operator's manifest.** A `gev.plugins.json` object entry may point at a directory outside the repo, but the dev/preview server serves an external plugin's files only from the path declared in the operator's local manifest, through a traversal-safe join (`safeJoinInside`) that rejects `..`, encoded `%2e%2e`, backslashes, absolute segments, and symlinks pointing outside the dir. The browser only ever receives a normalized `./plugins/<name>/<entry>` path — never the absolute dir — and external dirs are served by a dedicated middleware, never via Vite's file server (no `server.fs.allow` entry is added).
 
 ## Network exposure — the operator threat model
 

@@ -10,7 +10,29 @@ Create `gev.plugins.json` at the repo root (gitignored — copy `gev.plugins.exa
 { "plugins": ["./plugins/hello-layer/index.js"] }
 ```
 
-The client fetches `/gev.plugins.json`. A `404` (no manifest) means **no plugins** and is silent. Entries must be same-origin relative paths: a `./` prefix, ending in `.js` or `.mjs`, no `..` segment, no absolute path, no URL scheme — the manifest cannot point off-origin. Vite serves root files and `/plugins/...` modules in dev. **Production `vite build` is out of scope** — runtime plugin loading is a dev/preview feature for now.
+The client fetches `/gev.plugins.json`. A `404` (no manifest) means **no plugins** and is silent. Entries may be either:
+
+- a **string** — a same-origin relative path (`./` prefix, ending in `.js` or `.mjs`, no `..` segment, no absolute path, no URL scheme) pointing at a plugin that lives inside the repo (typically `./plugins/<name>/index.js`). Vite serves these in dev.
+- an **object** — `{ "name": "<name>", "dir": "<absolute directory path>", "entry": "index.js" }` describing a plugin that lives OUTSIDE the repo. `name` must match `/^[a-z0-9-]+$/` and be unique. `dir` must be an absolute path to an existing directory on the operator's machine. `entry` (default `index.js`) is a file name inside that directory, matching `/^[a-z0-9._-]+\.(js|mjs)$/` with no slashes.
+
+Object entries are an operator-owned local choice — the manifest (`gev.plugins.json`) is gitignored. The server rewrites each object entry to a `./plugins/<name>/<entry>` path before it reaches the browser, so the client never sees an absolute path and the client contract (string entries only) is unchanged. The dev/preview server serves an external plugin's files only from its declared `dir`, through a traversal-safe join that refuses `..`, encoded `%2e%2e`, backslashes, absolute segments, and symlinks pointing outside the dir. Nothing outside a declared dir is ever exposed (this is why no `server.fs.allow` entry is added).
+
+External plugins must be **self-contained ESM**. Use the `Cesium` and `viewer` handed in through `ctx`; do not import bare specifiers (no `import 'cesium'`) — there is no bundler resolution from outside the repo. Relative imports inside the plugin dir are fine (`import './points.js'`), because sibling files are served by the middleware. Served asset extensions are `.js`/`.mjs`, `.json`, `.css`, `.wasm`, `.png`/`.jpg`/`.svg`/`.gif`; any other extension returns a 404.
+
+```json
+{
+  "plugins": [
+    "./plugins/hello-layer/index.js",
+    { "name": "ext-demo", "dir": "/Users/me/gev-plugins/ext-demo", "entry": "index.js" }
+  ]
+}
+```
+
+The manifest is re-read on every dev request, so editing `gev.plugins.json` applies without a dev-server restart.
+
+### Production builds
+
+`vite build` copies every referenced plugin into `dist/plugins/...` (root plugins preserving their repo-relative path, external plugins into `dist/plugins/<name>/`) and writes the normalized client manifest to `dist/gev.plugins.json`. `vite preview` then serves the built plugins, so a built/preview app loads the same plugins as dev. With no manifest, the build output is unchanged — no `dist/gev.plugins.json`, no `dist/plugins/`.
 
 ## Plugin contract
 
@@ -42,7 +64,6 @@ Plugins load before the initial share hash is parsed, so a link that carries a p
 ## Not supported yet
 
 - Voice-tool enum integration.
-- Production builds (`vite build`).
 - Plugin-provided styles or UI panels.
 
 ## Try the demo

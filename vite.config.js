@@ -58,6 +58,7 @@ import { parseSilenceTimeoutEnv } from './src/data/aisWatchdog.js';
 import { keylessHudSummaryResponse } from './src/hudSummaryResponse.js';
 import { parseEnv as parseDotenvText } from 'node:util';
 import { readEnvironmentSource as readPinokioEnvironmentSource } from './scripts/pinokio-environment.mjs';
+import { gevPluginsVitePlugin } from './scripts/plugin-manifest.mjs';
 import {
   admitKeySetupRequest,
   isKeySetupExternallyManaged,
@@ -7760,6 +7761,7 @@ export default defineConfig(({ mode }) => {
       openAiRealtimeProxy(),
       googlePlacesContextProxy(),
       keySetupEndpoint(),
+      gevPluginsVitePlugin(),
     ],
     server: {
       host: env.HOST || 'localhost',
