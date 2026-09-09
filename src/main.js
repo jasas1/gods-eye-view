@@ -1,7 +1,7 @@
 import * as Cesium from 'cesium';
 import { StyleManager } from './ui.js';
 import { flyToAustin } from './camera.js';
-import { DataLayerManager } from './data/manager.js';
+import { DataLayerManager, layerFeedState } from './data/manager.js';
 import flightsLayer from './data/flights.js';
 import militaryFlightsLayer from './data/militaryFlights.js';
 import earthquakesLayer from './data/earthquakes.js';
@@ -203,6 +203,9 @@ async function init() {
         Cesium,
         viewer,
         registerDynamicCredit: (credit) => registerDynamicCredit(viewer, credit),
+        // Pure helper so a plugin can classify another layer's stats exactly
+        // the way the control chips do, without importing core modules.
+        layerFeedState,
       },
       existingLayerIds: REGISTERED_LAYER_IDS,
       existingTokens: LAYER_STATE_REGISTRY.map((entry) => entry.token),
@@ -249,6 +252,9 @@ async function init() {
     for (const descriptor of loaded.plugins) {
       for (const layer of descriptor.layers) {
         dataManager.register(layer);
+        // Same hook two built-in layers use: a plugin layer that observes the
+        // other layers (e.g. a provenance HUD) receives the manager once.
+        if (typeof layer.attachDataManager === 'function') layer.attachDataManager(dataManager);
         if (typeof layer.getDetectableObjects === 'function') registerDetectionLayer(layer);
       }
       if (Array.isArray(descriptor.credits)) {

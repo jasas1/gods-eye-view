@@ -36,7 +36,7 @@ The manifest is re-read on every dev request, so editing `gev.plugins.json` appl
 
 ## Plugin contract
 
-A plugin module's **default export** is `createPlugin(ctx)` receiving `{ Cesium, viewer, registerDynamicCredit }` and returning a descriptor:
+A plugin module's **default export** is `createPlugin(ctx)` receiving `{ Cesium, viewer, registerDynamicCredit, layerFeedState }` and returning a descriptor. `layerFeedState(stats)` is the pure classifier the control chips use (`nominal | loading | degraded | stale | fallback | unavailable`). A layer that defines `attachDataManager(dataManager)` receives the DataLayerManager once after registration, so it can observe other layers through `dataManager.getAll()` (the same hook the rocket-launches and military-awareness layers use).
 
 ```js
 {
