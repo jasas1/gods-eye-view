@@ -316,6 +316,25 @@ export function initDetection(viewer, layers, onModeChange) {
   console.log('[Detection] Initialized');
 }
 
+/**
+ * Register a runtime-loaded (plugin) data layer for detectable-object
+ * collection. Appends to `_layers` only when the layer implements
+ * `getDetectableObjects` and is not already present (by id or reference), so
+ * the built-in layer set from `initDetection` is never duplicated. Safe to
+ * call after `initDetection` (the plugin-loader path) or before it (the layer
+ * is picked up when `initDetection` next runs).
+ * @param {object} layer - A data layer module that may implement
+ *   `getDetectableObjects()`.
+ * @returns {boolean} True when the layer was added.
+ */
+export function registerDetectionLayer(layer) {
+  if (!layer || typeof layer.getDetectableObjects !== 'function') return false;
+  if (typeof layer.id !== 'string') return false;
+  if (_layers.some((existing) => existing === layer || existing.id === layer.id)) return false;
+  _layers.push(layer);
+  return true;
+}
+
 /** Release the host lane and all retained detection runtime state. */
 export function destroyDetection() {
   if (_cockpitModeListener && typeof window !== 'undefined') {

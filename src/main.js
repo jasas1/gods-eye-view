@@ -15,8 +15,10 @@ import aisLiveVesselsLayer from './data/aisLiveVessels.js';
 import militaryInstallationsLayer from './data/militaryInstallations.js';
 import militaryAwarenessLayer from './data/militaryAwareness.js';
 import localDataLayers from './data/localLayers.js';
-import { LAYER_STATE_REGISTRY } from './data/layerState.js';
-import { registerDataCredits } from './data/dataCredits.js';
+import { LAYER_STATE_REGISTRY, REGISTERED_LAYER_IDS, extendLayerStateRegistry } from './data/layerState.js';
+import { registerDataCredits, registerDynamicCredit } from './data/dataCredits.js';
+import { registerDetectionLayer } from './data/detection.js';
+import { loadPlugins } from './pluginLoader.js';
 import { SceneDirector } from './scenes/director.js';
 import { initGevVoiceCommands } from './voice/gevRealtime.js';
 import { MapStackController } from './mapStackController.js';
@@ -188,6 +190,26 @@ async function init() {
     await mapStackController.setStack(tileset ? 'photoreal' : 'esri-imagery', { silent: true });
 
     // Initialize the style manager (post-processing, HUD, locations, share links)
+    // Runtime plugin layers: opt-in via a `gev.plugins.json` manifest at the
+    // repo root. Loaded BEFORE the StyleManager so the share-token registry is
+    // already extended when it parses the initial share hash; the layers
+    // themselves are registered into the data manager further down. A missing
+    // manifest (404) means "no plugins" and is silent, so an app without a
+    // manifest boots byte-for-byte like before. The loader
+    // validates every descriptor BEFORE anything is emitted, so a bad plugin
+    // contributes nothing; failures are logged once via `[gev plugins]`.
+    const loaded = await loadPlugins({
+      ctx: {
+        Cesium,
+        viewer,
+        registerDynamicCredit: (credit) => registerDynamicCredit(viewer, credit),
+      },
+      existingLayerIds: REGISTERED_LAYER_IDS,
+      existingTokens: LAYER_STATE_REGISTRY.map((entry) => entry.token),
+    });
+    // Plugin share entries (enabled-only) extend the base seal so their state
+    // round-trips through the share URL exactly like built-in layers.
+    const pluginRegistry = extendLayerStateRegistry(loaded.shareEntries);
     const styleManager = new StyleManager(viewer, { mapStackController });
     // The previous multi-canvas weather compositor remains disabled. Cockpit
     // clouds use a separate, capped low-resolution GPU pass that never attaches
@@ -224,8 +246,19 @@ async function init() {
     for (const layer of localDataLayers) {
       dataManager.register(layer);
     }
+    for (const descriptor of loaded.plugins) {
+      for (const layer of descriptor.layers) {
+        dataManager.register(layer);
+        if (typeof layer.getDetectableObjects === 'function') registerDetectionLayer(layer);
+      }
+      if (Array.isArray(descriptor.credits)) {
+        for (const credit of descriptor.credits) registerDynamicCredit(viewer, credit);
+      }
+    }
     // Restoration starts only after the complete production registry is sealed.
-    dataManager.finalizeRegistrations(LAYER_STATE_REGISTRY);
+    // The seal includes the plugin share entries installed before the
+    // StyleManager parsed the initial share hash (see loadPlugins above).
+    dataManager.finalizeRegistrations(pluginRegistry);
     if (import.meta.env.DEV) {
       window.__gevQaRegisterLayer = (targetManager, layerModule) => {
         if (targetManager !== dataManager) throw new Error('QA layer manager mismatch');
@@ -325,6 +358,7 @@ async function init() {
       cockpitCloudEffects,
       getRenderGovernorDiagnostics,
       requestRender: governorRequestRender,
+      plugins: loaded,
     };
     window.__godsEyeView.voiceCommands = initGevVoiceCommands({ viewer, styleManager, dataManager, sceneDirector, annotations });
 
