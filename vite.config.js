@@ -7737,7 +7737,14 @@ export default defineConfig(({ mode }) => {
     if (process.env[key] === undefined) process.env[key] = val;
   }
   const env = { ...process.env };
-  const localAllowedHosts = ['localhost', '127.0.0.1', '.local'];
+  // GEV_ALLOWED_HOSTS: comma-separated extra Host values accepted WITHOUT
+  // binding to every interface — for a loopback reverse proxy such as
+  // `tailscale serve`, which forwards to 127.0.0.1 with the tailnet hostname
+  // in Host. Exact hostnames only; `.suffix` entries match subdomains as Vite
+  // does. The bind address stays whatever HOST says (localhost by default).
+  const extraAllowedHosts = String(env.GEV_ALLOWED_HOSTS || '')
+    .split(',').map((host) => host.trim()).filter(Boolean);
+  const localAllowedHosts = ['localhost', '127.0.0.1', '.local', ...extraAllowedHosts];
   return {
     plugins: [
       cesium(),
