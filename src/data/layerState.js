@@ -390,12 +390,40 @@ export const REGISTERED_LAYER_IDS = Object.freeze(
   LAYER_STATE_REGISTRY.map((entry) => entry.id),
 );
 
-const REGISTRY_BY_ID = new Map(
+/**
+ * Active serialization registry. Starts as the frozen base
+ * `LAYER_STATE_REGISTRY`; `extendLayerStateRegistry()` swaps in a combined
+ * base+plugins set. encode/decode and the by-id/by-token maps all read from
+ * this, so plugin layers with a token round-trip through the share URL exactly
+ * like built-in 'enabled-only' layers. The base `LAYER_STATE_REGISTRY` stays
+ * frozen and unchanged.
+ */
+let activeRegistry = LAYER_STATE_REGISTRY;
+let activeRegisteredLayerIds = REGISTERED_LAYER_IDS;
+let REGISTRY_BY_ID = new Map(
   LAYER_STATE_REGISTRY.map((entry) => [entry.id, entry]),
 );
-const REGISTRY_BY_TOKEN = new Map(
+let REGISTRY_BY_TOKEN = new Map(
   LAYER_STATE_REGISTRY.map((entry) => [entry.token, entry]),
 );
+
+/**
+ * Rebuild the by-id/by-token maps and the active id list from `activeRegistry`.
+ * Called once at load (base) and again whenever `extendLayerStateRegistry`
+ * installs a combined set. `OPTION_OWNER_IDS` is intentionally NOT rebuilt:
+ * plugin layers are 'enabled-only' and never own options.
+ */
+function rebuildActiveMaps() {
+  REGISTRY_BY_ID = new Map(activeRegistry.map((entry) => [entry.id, entry]));
+  REGISTRY_BY_TOKEN = new Map(
+    activeRegistry.map((entry) => [entry.token, entry]),
+  );
+  activeRegisteredLayerIds = Object.freeze(
+    activeRegistry.map((entry) => entry.id),
+  );
+}
+rebuildActiveMaps();
+
 const OPTION_OWNER_IDS = Object.freeze([
   ...new Set(
     LAYER_STATE_REGISTRY.map((entry) => entry.optionOwner).filter(Boolean),
@@ -465,6 +493,73 @@ export function validateLayerStateRegistry(registry = LAYER_STATE_REGISTRY) {
 
 validateLayerStateRegistry();
 
+/**
+ * Extend the active layer-state registry with plugin 'enabled-only' entries.
+ *
+ * The frozen base `LAYER_STATE_REGISTRY` is unchanged; the combined base+extras
+ * set becomes the active registry that encode/decode and the by-id/by-token
+ * maps read from. Idempotent: re-installing the same extras returns the
+ * already-active combined registry unchanged. Throws on id/token collision or
+ * an invalid extension entry (the canonical validator runs over the combined
+ * set, so duplicates against the base are caught too).
+ *
+ * @param {Array<{ id: string, token: string, disposition?: string, optionOwner?: string }>} entries
+ * @returns {object} The now-active combined registry (frozen).
+ */
+export function extendLayerStateRegistry(entries) {
+  const extras = [];
+  const list = Array.isArray(entries) ? entries : [];
+  for (const raw of list) {
+    if (!raw || typeof raw !== 'object') {
+      throw new Error('Layer-state extension entry must be an object');
+    }
+    if (typeof raw.id !== 'string' || !/^[a-z0-9-]+$/.test(raw.id)) {
+      throw new Error(
+        `Layer-state extension id is invalid: ${String(raw?.id)}`,
+      );
+    }
+    if (typeof raw.token !== 'string' || !/^[a-z0-9]$/.test(raw.token)) {
+      throw new Error(`Layer-state extension token is invalid: ${raw.id}`);
+    }
+    if (raw.disposition !== undefined && raw.disposition !== 'enabled-only') {
+      throw new Error(
+        `Layer-state extension must be 'enabled-only': ${raw.id}`,
+      );
+    }
+    if (raw.optionOwner) {
+      throw new Error(`Layer-state extension cannot own options: ${raw.id}`);
+    }
+    extras.push(
+      Object.freeze({
+        id: raw.id,
+        token: raw.token,
+        disposition: 'enabled-only',
+      }),
+    );
+  }
+
+  // Idempotent: the extras are already the installed set (by id+token), so the
+  // active registry already represents base+extras — return it unchanged.
+  const baseIds = new Set(LAYER_STATE_REGISTRY.map((entry) => entry.id));
+  const activeExtras = activeRegistry
+    .filter((entry) => !baseIds.has(entry.id))
+    .map((entry) => `${entry.id}:${entry.token}`);
+  const incomingExtras = extras.map((entry) => `${entry.id}:${entry.token}`);
+  const sameExtras =
+    activeExtras.length === incomingExtras.length &&
+    incomingExtras.every((key) => activeExtras.includes(key));
+  if (sameExtras) return activeRegistry;
+
+  const combined = Object.freeze([...LAYER_STATE_REGISTRY, ...extras]);
+  // Reuse the canonical validator for the combined set: it enforces unique
+  // ids, unique single-char tokens, valid dispositions, and the
+  // enabled-only/option-owner rules for every entry.
+  validateLayerStateRegistry(combined);
+  activeRegistry = combined;
+  rebuildActiveMaps();
+  return activeRegistry;
+}
+
 /** Produce the complete durable default state. */
 export function createDefaultLayerState() {
   return {
@@ -484,7 +579,7 @@ export function normalizeLayerState(candidate) {
       ? input.enabledLayerIds.map(String)
       : [],
   );
-  const enabledLayerIds = REGISTERED_LAYER_IDS.filter((id) =>
+  const enabledLayerIds = activeRegisteredLayerIds.filter((id) =>
     requestedEnabled.has(id),
   );
   const enabled = new Set(enabledLayerIds);
@@ -542,7 +637,8 @@ export function encodeLayerStateParams(params, state) {
   const enabled = new Set(normalized.enabledLayerIds);
   params.set(
     'l',
-    LAYER_STATE_REGISTRY.filter((entry) => enabled.has(entry.id))
+    activeRegistry
+      .filter((entry) => enabled.has(entry.id))
       .map((entry) => entry.token)
       .join('.'),
   );
@@ -918,14 +1014,18 @@ export class LayerStateCoordinator {
   }
 
   async _restoreSelectedState(origin) {
-    for (const entry of LAYER_STATE_REGISTRY) {
+    // Snapshot the active registry: the .map and the index-based fallback
+    // below must read the SAME array, and a mid-restore extension swap must
+    // not split indices. Plugin 'enabled-only' layers restore too.
+    const registry = activeRegistry;
+    for (const entry of registry) {
       this._restoreControllers.set(entry.id, new AbortController());
     }
     try {
       await this._waitForRestoreGate();
       const enabled = new Set(this._durableState.enabledLayerIds);
       const settled = await Promise.allSettled(
-        LAYER_STATE_REGISTRY.map(async (entry) => {
+        registry.map(async (entry) => {
           const controller = this._restoreControllers.get(entry.id);
           const targetEnabled = enabled.has(entry.id);
           const options = layerOptionsForRestore(this._durableState, entry.id);
@@ -978,7 +1078,7 @@ export class LayerStateCoordinator {
       );
       this.lastRestoreResults = settled.map((result, index) => {
         if (result.status === 'fulfilled') return result.value;
-        const entry = LAYER_STATE_REGISTRY[index];
+        const entry = registry[index];
         return {
           layerId: entry.id,
           targetEnabled: enabled.has(entry.id),

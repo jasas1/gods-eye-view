@@ -80,6 +80,8 @@ The highest-leverage places to jump in:
 - **🎨 Add a visual style.** Styles are GLSL post-process shaders in `src/styles/`.
 - **🐛 Fix bugs / improve the first-run experience.** See [docs/KNOWN-ISSUES.md](docs/KNOWN-ISSUES.md).
 
+You can also ship a layer as an **external runtime plugin** listed in a `gev.plugins.json` manifest, with no edits to core files — see [docs/PLUGINS.md](docs/PLUGINS.md) for the manifest shape, the plugin contract, and the demo `plugins/hello-layer` plugin. This is an opt-in prototype; the app boots unchanged when no manifest is present.
+
 ## Architecture in one minute
 
 - **No framework.** Vanilla JS + [CesiumJS](https://cesium.com/platform/cesiumjs/) + [Vite](https://vitejs.dev/).

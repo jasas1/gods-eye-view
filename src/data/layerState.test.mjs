@@ -14,6 +14,7 @@ import {
   createDefaultLayerState,
   decodeLayerStateParams,
   encodeLayerStateParams,
+  extendLayerStateRegistry,
   normalizeLayerState,
   parseStoredLayerState,
   serializeStoredLayerState,
@@ -1603,4 +1604,70 @@ test('the owner layer going away revokes the pending watch at any origin', async
     );
     f.coordinator.destroy();
   }
+});
+
+test('extendLayerStateRegistry: plugin layers round-trip through encode/decode', () => {
+  try {
+    // 'k' is a free token in the current base registry (digits/letters not
+    // claimed by any built-in). 'p' is now taken by alpr-cameras.
+    const extras = [{ id: 'hello-layer', token: 'k', disposition: 'enabled-only' }];
+    const combined = extendLayerStateRegistry(extras);
+    assert.equal(combined.length, LAYER_STATE_REGISTRY.length + 1);
+    assert.equal(combined[combined.length - 1].id, 'hello-layer');
+    assert.equal(combined[combined.length - 1].disposition, 'enabled-only');
+
+    const params = new URLSearchParams([['v', '2']]);
+    encodeLayerStateParams(params, {
+      version: 2,
+      enabledLayerIds: ['hello-layer', 'earthquakes'],
+      options: {},
+    });
+    // 'k' (hello-layer) and 'e' (earthquakes) must both be present, base order.
+    assert.match(params.get('l'), /k/);
+    assert.match(params.get('l'), /e/);
+
+    const decoded = decodeLayerStateParams(params);
+    assert.ok(decoded, 'decode must succeed for plugin tokens');
+    assert.ok(decoded.enabledLayerIds.includes('hello-layer'));
+    assert.ok(decoded.enabledLayerIds.includes('earthquakes'));
+  } finally {
+    extendLayerStateRegistry([]);
+  }
+});
+
+test('extendLayerStateRegistry: token/id collision throws', () => {
+  try {
+    assert.throws(
+      () =>
+        extendLayerStateRegistry([
+          { id: 'earthquakes', token: 'z', disposition: 'enabled-only' },
+        ]),
+      /Duplicate layer-state id: earthquakes/,
+    );
+    assert.throws(
+      () =>
+        extendLayerStateRegistry([
+          { id: 'plugin-x', token: 'e', disposition: 'enabled-only' },
+        ]),
+      /Duplicate layer-state token: e/,
+    );
+  } finally {
+    extendLayerStateRegistry([]);
+  }
+});
+
+test('extendLayerStateRegistry: idempotent for the same entries', () => {
+  try {
+    const extras = [{ id: 'hello-layer', token: 'k', disposition: 'enabled-only' }];
+    const first = extendLayerStateRegistry(extras);
+    const second = extendLayerStateRegistry(extras);
+    assert.equal(second, first, 'second call returns the same active registry');
+    assert.equal(second.length, LAYER_STATE_REGISTRY.length + 1);
+  } finally {
+    extendLayerStateRegistry([]);
+  }
+  // After reset, encode behaves like the base again.
+  const params = new URLSearchParams([['v', '2']]);
+  encodeLayerStateParams(params, { version: 2, enabledLayerIds: ['hello-layer'], options: {} });
+  assert.equal(params.get('l'), '', 'plugin token no longer serialized after reset');
 });

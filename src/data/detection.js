@@ -323,6 +323,28 @@ export function initDetection(viewer, layers, onModeChange) {
   console.log('[Detection] Initialized');
 }
 
+/**
+ * Register a data layer that may expose detectable objects at runtime.
+ *
+ * Mirrors the legacy main.js wiring: a layer with `getDetectableObjects` is
+ * appended to the module-level `_layers` array exactly once (by reference or
+ * id). Layers without `getDetectableObjects` are ignored. Runtime plugin
+ * layers register here after the data manager is sealed.
+ * @param {object} layer - Data layer module with an `id` and optional
+ * `getDetectableObjects()`.
+ * @returns {boolean} True when the layer was added.
+ */
+export function registerDetectionLayer(layer) {
+  if (!layer || typeof layer.getDetectableObjects !== 'function') return false;
+  if (typeof layer.id !== 'string') return false;
+  if (
+    _layers.some((existing) => existing === layer || existing.id === layer.id)
+  )
+    return false;
+  _layers.push(layer);
+  return true;
+}
+
 /** Release the host lane and all retained detection runtime state. */
 export function destroyDetection() {
   if (_cockpitModeListener && typeof window !== 'undefined') {

@@ -6,6 +6,8 @@ import { createStandaloneScene } from './scene.js';
 import { createStandaloneControls } from './controls.js';
 import { createStandaloneData } from './data.js';
 import { createStandaloneTools } from './tools.js';
+import { installStandalonePlugins } from './plugins.js';
+import * as Cesium from 'cesium';
 
 // The existing controls and layer catalog contain page-scoped state.
 let constructed = false;
@@ -25,6 +27,9 @@ export function createStandaloneApplication({
   const loaderStatus = loadingScreen.querySelector('.loader-status');
   let placeSearch;
   let catalog;
+  // Plugin load result (kept on the closure so createTools can expose it on
+  // window.__godsEyeView.plugins for the QA probe).
+  let plugins;
   return createApplication({
     createScene: async (context) => {
       placeSearch = createStandalonePlaceSearch({
@@ -52,6 +57,16 @@ export function createStandaloneApplication({
         signal: context.signal,
         surface: scene.operations.surface,
       });
+      // Runtime plugins extend the catalog before the StyleManager parses the
+      // initial share hash (controls phase) and before the data manager seals
+      // (data phase). The viewer is on the scene object createApplicationScene
+      // returns ({ viewer, mapStackController, operations }). With no manifest
+      // the catalog is returned untouched.
+      ({ catalog, loaded: plugins } = await installStandalonePlugins({
+        catalog,
+        viewer: scene.viewer,
+        Cesium,
+      }));
       return scene;
     },
     createControls: (context) =>
@@ -63,7 +78,20 @@ export function createStandaloneApplication({
       }),
     createData: (context) =>
       createStandaloneData({ ...context, allowQaRegistration, catalog }),
-    createTools: (context) =>
-      createStandaloneTools({ ...context, loadingScreen, placeSearch, voice }),
+    createTools: (context) => {
+      const tools = createStandaloneTools({
+        ...context,
+        loadingScreen,
+        placeSearch,
+        voice,
+      });
+      // Expose the plugin load result for debugging / the QA probe, which
+      // reads `__godsEyeView.plugins.errors`. Set only when the global exists
+      // (createStandaloneTools creates it during the tools phase).
+      if (typeof window !== 'undefined' && window.__godsEyeView) {
+        window.__godsEyeView.plugins = plugins;
+      }
+      return tools;
+    },
   });
 }
