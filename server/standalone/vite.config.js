@@ -23,5 +23,9 @@ export default defineConfig(({ mode }) => {
     cesiumToken: process.env.CESIUM_ION_TOKEN,
     host: process.env.HOST,
     port: process.env.PORT,
+    extraAllowedHosts: String(process.env.GEV_ALLOWED_HOSTS || '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   });
 });

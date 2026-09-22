@@ -81,3 +81,31 @@ test('build export resolves in Node and has no browser fallback', async () => {
   );
   assert.deepEqual(pkg.exports['./build/vite'], { node: './build/vite.js' });
 });
+
+test('extraAllowedHosts appends to the loopback list when not binding all interfaces', () => {
+  const config = createBrowserViteConfig({
+    extraAllowedHosts: ['jas.tail64b550.ts.net'],
+  });
+  assert.deepEqual(config.server.allowedHosts, [
+    'localhost',
+    '127.0.0.1',
+    '.local',
+    'jas.tail64b550.ts.net',
+  ]);
+  // The default list is unchanged when the option is absent.
+  assert.deepEqual(createBrowserViteConfig().server.allowedHosts, [
+    'localhost',
+    '127.0.0.1',
+    '.local',
+  ]);
+});
+
+test('extraAllowedHosts is ignored when binding all interfaces', () => {
+  assert.equal(
+    createBrowserViteConfig({
+      host: '0.0.0.0',
+      extraAllowedHosts: ['jas.tail64b550.ts.net'],
+    }).server.allowedHosts,
+    true,
+  );
+});
