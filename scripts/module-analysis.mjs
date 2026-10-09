@@ -16,7 +16,7 @@ const browserGlobals = new Set([
 ]);
 
 /** Inspect literal module dependencies and browser-platform references without executing code. */
-export function analyzeModule(source) {
+export function analyzeModule(source, { allowComputedImports = false } = {}) {
   const imports = [];
   const browser = new Set();
   function walk(node, parent, field) {
@@ -30,11 +30,12 @@ export function analyzeModule(source) {
       ].includes(node.type) &&
       node.source
     ) {
-      if (node.source.type !== 'StringLiteral')
-        throw new Error(
-          'Computed module imports are not allowed in runtime code',
-        );
-      imports.push(node.source.value);
+      if (node.source.type !== 'StringLiteral') {
+        if (!allowComputedImports)
+          throw new Error(
+            'Computed module imports are not allowed in runtime code',
+          );
+      } else imports.push(node.source.value);
     }
     if (node.type === 'CallExpression' && node.callee?.name === 'require')
       throw new Error('Runtime modules must use ES imports');

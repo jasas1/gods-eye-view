@@ -47,9 +47,11 @@ See [application construction](APPLICATION.md) and the
 1. `scripts/check-import-directions.mjs` parses every runtime JS/MJS/CJS file in
    `src/` and `server/`, including files unused by the current bundle. Static,
    literal dynamic and re-export edges are checked; computed module imports and
-   CommonJS `require` are rejected. Browser graphs cannot reach Node, server or
-   test modules through helpers. Reusable modules cannot select standalone setup,
-   and provider modules cannot import application/rendering modules.
+   CommonJS `require` are rejected. The single exception is
+   `src/pluginLoader.js`, the runtime plugin loader, because it imports validated
+   manifest entries by URL. Browser graphs cannot reach Node, server or test
+   modules through helpers. Reusable modules cannot select standalone setup, and
+   provider modules cannot import application/rendering modules.
 2. `scripts/check-package-boundaries.mjs` builds every declared export without
    app Vite configuration or environment files. `scripts/package-boundaries.json`
    assigns each export exactly once and lists its owned modules and external

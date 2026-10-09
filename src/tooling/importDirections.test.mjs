@@ -43,6 +43,19 @@ test('module analysis parses dependencies and platform references without readin
     ['document', 'navigator'],
   );
   assert.throws(() => analyzeModule('import(name)'), /Computed/);
+  assert.deepEqual(
+    analyzeModule("import(name); import('literal');", {
+      allowComputedImports: true,
+    }).imports,
+    ['literal'],
+  );
+  assert.throws(
+    () =>
+      analyzeModule("import(name); require('node:fs');", {
+        allowComputedImports: true,
+      }),
+    /ES imports/,
+  );
   assert.throws(() => analyzeModule("require('node:fs')"), /ES imports/);
 });
 
@@ -55,6 +68,27 @@ test('portable sources can share records, and standalone can assemble rendering'
   write('src/standalone/catalog.js', "import '../layers/demo/index.js';");
   write('src/layers/demo/index.js', "import * as Cesium from 'cesium';");
   assert.equal(checkImportDirections(root).modules, 5);
+});
+
+test('runtime plugin loader may use a computed import', (t) => {
+  const { root, write } = fixture(t);
+  write('src/pluginLoader.js', 'export const load = (url) => import(url);');
+  assert.doesNotThrow(() => checkImportDirections(root));
+});
+
+test('computed import exception matches the full runtime plugin loader path', (t) => {
+  const { root, write } = fixture(t);
+  write(
+    'src/standalone/pluginLoader.js',
+    'export const load = (url) => import(url);',
+  );
+  assert.throws(() => checkImportDirections(root), /Computed/);
+});
+
+test('runtime plugin loader still obeys other import rules', (t) => {
+  const { root, write } = fixture(t);
+  write('src/pluginLoader.js', "export const load = import('node:fs');");
+  assert.throws(() => checkImportDirections(root), /Node builtin/);
 });
 
 for (const [name, files, pattern] of [

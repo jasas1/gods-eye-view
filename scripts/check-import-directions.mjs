@@ -29,6 +29,8 @@ const compatibilityEdge = (from, to) =>
   (from === 'server/providers/local.js' &&
     to === 'server/standalone/key-setup.js') ||
   (from === 'src/ui.js' && to === 'src/standalone/catalog.js');
+// The runtime plugin loader imports validated manifest entries by URL.
+const computedImportException = (file) => file === 'src/pluginLoader.js';
 const portableExport = (key) =>
   key.startsWith('./sources/') ||
   /\/source$/.test(key) ||
@@ -88,7 +90,12 @@ export function checkImportDirections(root) {
     }
     let analysis;
     try {
-      analysis = analyzeModule(readFileSync(resolved, 'utf8'));
+      analysis = analyzeModule(
+        readFileSync(resolved, 'utf8'),
+        computedImportException(file)
+          ? { allowComputedImports: true }
+          : undefined,
+      );
     } catch (error) {
       report(file, error.message);
       return null;
