@@ -331,12 +331,12 @@ test('loadPlugins: a layer with no share entry gets an auto-assigned token', asy
   assert.equal(loaded.plugins.length, 1);
   assert.equal(loaded.shareEntries.length, 1);
   assert.equal(loaded.shareEntries[0].id, 'hello-layer');
-  // First free token in the pool is '0'.
-  assert.equal(loaded.shareEntries[0].token, '0');
+  // First free token in the pool is 'zz'.
+  assert.equal(loaded.shareEntries[0].token, 'zz');
   assert.equal(loaded.shareEntries[0].disposition, 'enabled-only');
 });
 
-test('loadPlugins: auto-assignment skips already-claimed tokens (digits then letters)', async () => {
+test('loadPlugins: auto-assignment skips already-claimed tokens (downward from zz)', async () => {
   const goodModule = { default: () => goodDescriptor({ share: undefined }) };
   const loaded = await loadPlugins({
     fetchImpl: async () =>
@@ -348,18 +348,20 @@ test('loadPlugins: auto-assignment skips already-claimed tokens (digits then let
     importer: async () => goodModule,
     ctx: {},
     existingLayerIds: [],
-    // All digits claimed -> first free token is 'a'.
-    existingTokens: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+    // The whole 'z' row claimed -> first free token is 'yz'.
+    existingTokens: [...'0123456789abcdefghijklmnopqrstuvwxyz'].map(
+      (second) => `z${second}`,
+    ),
   });
   assert.equal(loaded.shareEntries.length, 1);
-  assert.equal(loaded.shareEntries[0].token, 'a');
+  assert.equal(loaded.shareEntries[0].token, 'yz');
 });
 
 test('loadPlugins: explicit tokens are preserved alongside auto-assigned layers', async () => {
   const twoLayerDescriptor = {
     ...goodDescriptor(),
     layers: [goodLayer(), goodLayer({ id: 'other-layer', name: 'Other' })],
-    share: [{ id: 'hello-layer', token: 'k' }],
+    share: [{ id: 'hello-layer', token: 'zz' }],
   };
   const goodModule = { default: () => twoLayerDescriptor };
   const loaded = await loadPlugins({
@@ -379,22 +381,21 @@ test('loadPlugins: explicit tokens are preserved alongside auto-assigned layers'
   const byId = Object.fromEntries(
     loaded.shareEntries.map((e) => [e.id, e.token]),
   );
-  assert.equal(byId['hello-layer'], 'k', 'explicit token preserved');
-  // The un-tokened 'other-layer' gets the first free token AFTER 'k' is claimed.
-  assert.notEqual(byId['other-layer'], 'k');
-  assert.match(byId['other-layer'], /^[a-z0-9]$/);
+  assert.equal(byId['hello-layer'], 'zz', 'explicit token preserved');
+  // The un-tokened 'other-layer' gets the first free token AFTER 'zz' is claimed.
+  assert.equal(byId['other-layer'], 'zy');
 });
 
 test('loadPlugins: a later plugin cannot reuse an auto-assigned token', async () => {
-  // First plugin has no share -> auto-assigns '0'. A second plugin that
-  // explicitly asks for '0' must be rejected for collision.
+  // First plugin has no share -> auto-assigns 'zz'. A second plugin that
+  // explicitly asks for 'zz' must be rejected for collision.
   const autoModule = { default: () => goodDescriptor({ share: undefined }) };
   const collisionModule = {
     default: () =>
       goodDescriptor({
         id: 'collision-plugin',
         layers: [goodLayer({ id: 'coll-layer' })],
-        share: [{ id: 'coll-layer', token: '0' }],
+        share: [{ id: 'coll-layer', token: 'zz' }],
       }),
   };
   const importer = async (spec) =>
@@ -415,10 +416,10 @@ test('loadPlugins: a later plugin cannot reuse an auto-assigned token', async ()
     existingTokens: [],
   });
   assert.equal(loaded.plugins.length, 1);
-  assert.equal(loaded.shareEntries[0].token, '0');
+  assert.equal(loaded.shareEntries[0].token, 'zz');
   assert.ok(
     loaded.errors.some((e) =>
-      /collides with an existing token: 0/.test(e.error),
+      /collides with an existing token: zz/.test(e.error),
     ),
   );
 });

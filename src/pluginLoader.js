@@ -22,9 +22,9 @@
  *    entries are emitted, so a bad plugin contributes nothing to the output.
  *  - `share` is optional, but every accepted layer ENDS UP with a token:
  *    a layer without a `share` entry gets one AUTO-ASSIGNED from the free
- *    pool (digits '0'-'9' then letters 'a'-'z', skipping every token already
- *    claimed by built-ins, earlier plugins, or an explicit token in the same
- *    plugin). Collision with an EXPLICIT token stays a hard rejection of the
+ *    pool (two-character tokens from 'zz' downward, skipping every token
+ *    already claimed by built-ins, earlier plugins, or an explicit token in
+ *    the same plugin). Collision with an EXPLICIT token stays a hard rejection of the
  *    whole plugin, exactly as before; only the un-tokened layers are filled
  *    in. The returned `shareEntries` therefore carries one entry per accepted
  *    plugin layer.
@@ -35,50 +35,21 @@
 
 /** Plugin/layer id grammar — same rule as the layer-state registry. */
 const ID_RE = /^[a-z0-9-]+$/;
-/** Share tokens are a single [a-z0-9] character, matching the registry. */
-const TOKEN_RE = /^[a-z0-9]$/;
+/** Share tokens are one or two [a-z0-9] characters, matching the registry. */
+const TOKEN_RE = /^[a-z0-9]{1,2}$/;
+const TOKEN_ALPHABET = '0123456789abcdefghijklmnopqrstuvwxyz';
 /**
- * Ordered free-token pool for auto-assignment: digits first, then letters.
- * Mirrors the layer-state registry's single-character token grammar.
+ * Ordered free-token pool for auto-assignment: the two-character namespace
+ * from its top, 'zz' down to '00'. The built-in registry allocates upward
+ * (free digits, then '00'), so the two meet only when the namespace is full.
  */
-const TOKEN_POOL = Object.freeze([
-  '0',
-  '1',
-  '2',
-  '3',
-  '4',
-  '5',
-  '6',
-  '7',
-  '8',
-  '9',
-  'a',
-  'b',
-  'c',
-  'd',
-  'e',
-  'f',
-  'g',
-  'h',
-  'i',
-  'j',
-  'k',
-  'l',
-  'm',
-  'n',
-  'o',
-  'p',
-  'q',
-  'r',
-  's',
-  't',
-  'u',
-  'v',
-  'w',
-  'x',
-  'y',
-  'z',
-]);
+const TOKEN_POOL = Object.freeze(
+  [...TOKEN_ALPHABET]
+    .reverse()
+    .flatMap((first) =>
+      [...TOKEN_ALPHABET].reverse().map((second) => `${first}${second}`),
+    ),
+);
 
 /**
  * Decide whether a manifest entry is an allowed same-origin plugin path.
@@ -99,7 +70,7 @@ function isAllowedPluginPath(spec) {
 }
 
 /**
- * Find the next free single-character token not already in `claimed`, or
+ * Find the next free pool token not already in `claimed`, or
  * `null` when the pool is exhausted.
  * @param {Set<string>} claimed - Tokens already in use.
  * @returns {string|null}
@@ -152,7 +123,7 @@ export function validatePluginManifest(json) {
  *
  * @param {unknown} descriptor - The descriptor to validate.
  * @param {{ existingLayerIds: Set<string>, existingTokens: Set<string> }} sets -
- *   Layer ids and single-char tokens already claimed (built-ins plus any
+ *   Layer ids and share tokens already claimed (built-ins plus any
  *   plugins accepted earlier in this load pass).
  * @returns {{ ok: boolean, errors: string[] }}
  */
@@ -249,7 +220,7 @@ export function validatePluginDescriptor(
         }
         if (typeof entry.token !== 'string' || !TOKEN_RE.test(entry.token)) {
           errors.push(
-            `plugin share token must be a single [a-z0-9] char: ${String(entry?.token)}`,
+            `plugin share token must be one or two [a-z0-9] chars: ${String(entry?.token)}`,
           );
           continue;
         }
@@ -313,8 +284,8 @@ function describeError(error) {
  *   viewer, registerDynamicCredit, layerFeedState }`.
  * @param {Iterable<string>} [options.existingLayerIds=[]] - Layer ids already
  *   claimed by built-ins (and earlier accepted plugins).
- * @param {Iterable<string>} [options.existingTokens=[]] - Single-char share
- *   tokens already claimed by the layer-state registry.
+ * @param {Iterable<string>} [options.existingTokens=[]] - Share tokens
+ *   already claimed by the layer-state registry.
  * @returns {Promise<{ plugins: object[], shareEntries: { id: string, token: string, disposition: 'enabled-only' }[], errors: { spec: string, error: string }[] }>}
  *   `shareEntries` carries one entry per accepted plugin layer — explicit
  *   tokens first, then auto-assigned tokens for any layer without a `share`

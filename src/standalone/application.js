@@ -8,6 +8,7 @@ import { createStandaloneData } from './data.js';
 import { createStandaloneTools } from './tools.js';
 import { installStandalonePlugins } from './plugins.js';
 import * as Cesium from 'cesium';
+import { createGoogleTokenSource } from '../maps/googleTokens.js';
 
 // The existing controls and layer catalog contain page-scoped state.
 let constructed = false;
@@ -44,6 +45,9 @@ export function createStandaloneApplication({
       const scene = await createStandaloneScene({
         ...context,
         googleApiKey,
+        // Without a key, Google 3D can still load with tokens from the
+        // app's server when it offers them.
+        googleTokens: googleApiKey ? null : createGoogleTokenSource(),
         cesiumToken,
         loaderStatus,
       });
@@ -53,6 +57,8 @@ export function createStandaloneApplication({
             'Nepal',
             signal,
             placeSearch,
+            // The locator draws the border whenever it arrives.
+            { budgetMs: Infinity },
           ),
         signal: context.signal,
         surface: scene.operations.surface,

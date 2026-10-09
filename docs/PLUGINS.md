@@ -44,7 +44,7 @@ A plugin module's **default export** is `createPlugin(ctx)` receiving `{ Cesium,
   version: '0.1.0',
   name: 'My Plugin',
   layers: [/* layer modules implementing the layer interface */],
-  share: [{ id: 'my-layer', token: 'k' }], // optional, one per layer
+  share: [{ id: 'my-layer', token: 'zy' }], // optional, one per layer
   credits: [{ key: 'my-layer', html: 'Attribution' }], // optional
 }
 ```
@@ -53,13 +53,11 @@ Each `layers[i]` implements the layer interface used by the built-in layer facto
 
 ## Share tokens
 
-A plugin layer that should round-trip through a share link declares a `share` entry with a single `[a-z0-9]` token. Disposition is always `enabled-only`. Free (unused) layer tokens in the current base registry:
+A plugin layer that should round-trip through a share link declares a `share` entry with a one- or two-character `[a-z0-9]` token. Disposition is always `enabled-only`.
 
-`0 1 2 3 4 5 6 7 8 9 k l o y`
+Pick a two-character token from the top of the namespace (`zz`, `zy`, `zx`, …). The built-in registry owns every single letter, and its token ledger (`src/data/layerStateTokenReservations.json`) gives each new built-in layer the next free token counting up: the free digits first, then `00`, `01`, …. A token from the top stays clear of that. A token the ledger already owns is rejected. The demo `plugins/hello-layer` plugin uses `zz`.
 
-(`v` is reserved — it is the radio volume OPTION token carried in the `lo` param, not a layer token — so plugin layers avoid it to keep the two namespaces unambiguous.) The demo `plugins/hello-layer` plugin uses `k`.
-
-**Auto-assigned tokens.** `share` is optional, but every accepted plugin layer ends up with a token so the catalog metadata stays complete. A layer with no `share` entry gets one **auto-assigned** from the free pool — digits `'0'`-`'9'` first, then letters `'a'`-`'z', skipping every token already claimed by the built-in registry, an earlier plugin, or an explicit token in the same plugin. The loader performs the assignment (so it is covered by the unit tests) and exposes every assigned token in the returned `shareEntries`. Collision with an EXPLICIT token stays a hard rejection of the whole plugin, exactly as before; only un-tokened layers are filled in.
+**Auto-assigned tokens.** `share` is optional, but every accepted plugin layer ends up with a token so the catalog metadata stays complete. A layer with no `share` entry gets one **auto-assigned** from the free pool — two-character tokens from `'zz'` downward, skipping every token already claimed by the built-in registry, an earlier plugin, or an explicit token in the same plugin. The loader performs the assignment (so it is covered by the unit tests) and exposes every assigned token in the returned `shareEntries`. Collision with an EXPLICIT token stays a hard rejection of the whole plugin, exactly as before; only un-tokened layers are filled in.
 
 Plugins load before the initial share hash is parsed (the loader runs inside the scene phase in `src/standalone/application.js`, before the controls phase builds the StyleManager), so a link that carries a plugin token restores that layer at boot, provided the same manifest lists the plugin.
 

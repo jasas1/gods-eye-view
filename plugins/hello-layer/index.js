@@ -8,7 +8,7 @@
  * The layer adds five Cesium point entities (with labels) into a dedicated
  * CustomDataSource, exposes the detectable-object shape the detection paint
  * loop expects, and round-trips through the share-link registry via the token
- * 'k'. It uses the `Cesium` handed in through ctx (no bundler resolution
+ * 'zz'. It uses the `Cesium` handed in through ctx (no bundler resolution
  * needed from /plugins).
  */
 
@@ -126,7 +126,7 @@ export default function createPlugin({ Cesium, viewer }) {
     version: '0.1.0',
     name: 'Hello Layer',
     layers: [createHelloLayer({ Cesium, viewer })],
-    share: [{ id: 'hello-layer', token: 'k' }],
+    share: [{ id: 'hello-layer', token: 'zz' }],
     credits: [{ key: 'hello-layer', html: 'Hello Layer demo plugin' }],
   };
 }
